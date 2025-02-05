@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Image Classifier</title>
+  
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
+  
+  <!-- Custom Styles -->
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #2c3e50, #34495e);
+      color: white;
+      text-align: center;
+      padding: 50px;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+      max-width: 800px;
+      margin: auto;
+    }
+    #upload-box {
+      border: 2px dashed #1abc9c;
+      padding: 40px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    #upload-box:hover {
+      background: rgba(26, 188, 156, 0.2);
+    }
+    .hidden {
+      display: none;
+    }
+    /* Container for all preview items */
+    #preview-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    /* Each preview item holds the image and its filename */
+    .preview-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 10px;
+      /* Use a fixed width that will allow wrapping; adjust as needed */
+      width: 150px;
+    }
+    /* Ensure the image fits within its container */
+    .preview-img {
+      max-width: 100%;
+      border-radius: 10px;
+      transition: transform 0.3s;
+    }
+    .preview-img:hover {
+      transform: scale(1.05);
+    }
+    /* Style for the filename text */
+    .image-name {
+      margin-top: 5px;
+      font-size: 0.9rem;
+      color: #f1f1f1;
+      word-break: break-all;
+    }
+    #loading {
+      display: none;
+      margin-top: 20px;
+    }
+    #result {
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 20px;
+      color: #2ecc71;
+    }
+    .btn-custom {
+      background: #1abc9c;
+      border: none;
+      padding: 10px 20px;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: 0.3s;
+      margin-top: 10px;
+    }
+    .btn-custom:hover {
+      background: #16a085;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-4">AI Image Classification</h1>
+    
+    <!-- Drag & Drop Upload Box -->
+    <div id="upload-box" class="text-center">
+      <p>Drag &amp; Drop Images Here or Click to Upload</p>
+      <input type="file" name="images" id="file-input" accept="image/*" class="hidden" multiple />
+    </div>
+
+    <!-- Previews Container -->
+    <div id="preview-container"></div>
+    
+    <!-- Submit Button -->
+    <button class="btn-custom hidden" id="submit-btn" onclick="getPredictions()" >Submit Images</button>
+
+    <!-- Loading Animation -->
+    <div id="loading">
+      <div class="spinner-border text-light" role="status"></div>
+      <p>Processing Images...</p>
+    </div>
+
+    <!-- Classification Result -->
+    <div id="result"></div>
+
+    <!-- Button to add more images without clearing the existing previews -->
+    <button class="btn-custom mt-3" onclick="addMoreImages()">Add More Images</button>
+  </div>
+
+  <!-- Inline JavaScript -->
+  <script>
+    const uploadBox = document.getElementById("upload-box");
+    const fileInput = document.getElementById("file-input");
+    const previewContainer = document.getElementById("preview-container");
+    const submitBtn = document.getElementById("submit-btn");
+    const resultDiv = document.getElementById("result");
+    const loading = document.getElementById("loading");
+
+    // To store selected files
+    let filesArray = [];
+
+    // Trigger file selection when clicking the upload box
+    uploadBox.addEventListener("click", () => fileInput.click());
+
+    // Drag & Drop Functionality
+    uploadBox.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      uploadBox.style.background = "rgba(26, 188, 156, 0.2)";
+    });
+
+    uploadBox.addEventListener("dragleave", () => {
+      uploadBox.style.background = "rgba(255, 255, 255, 0.1)";
+    });
+
+    uploadBox.addEventListener("drop", (event) => {
+      event.preventDefault();
+      uploadBox.style.background = "rgba(255, 255, 255, 0.1)";
+      const files = event.dataTransfer.files;
+      handleFiles(files);
+    });
+
+    fileInput.addEventListener("change", (event) => {
+      const files = event.target.files;
+      handleFiles(files);
+    });
+
+    async function getPredictions() {
+  if (filesArray.length === 0) return;
+
+  // Prepare form data; appending each file with the same key so backend can handle multiple files
+  const formData = new FormData();
+  filesArray.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  // Show loading animation and hide the submit button
+  loading.style.display = "block";
+  resultDiv.innerHTML = "";
+  submitBtn.classList.add("hidden");
+
+  // Send to backend for classification
+  try {
+    const response = await fetch("/predict", {
+      method: "POST",
+      body: formData,
+    });
+
+    const result = await response.json();
+    console.log(result[0].predicted_class)
+
+    // Check if response is an array of predictions (one per image)
+    let output = "";
+    if (Array.isArray(result)) {
+      result.forEach((r, idx) => {
+      console.log(r.predicted_class)
+        output += `Image ${idx + 1}: Prediction: <strong>${r.predicted_class}</strong><br /> Confidence: <strong>${r.confidence}%</strong><br /><br />`;
+      });
+    } else {
+      // Fallback for a single result object
+      output = `Prediction: <strong>${result[0].predicted_class}</strong><br /> Confidence: <strong>${result[0].confidence}%</strong>`;
+    }
+
+    // Display the result
+    resultDiv.innerHTML = output;
+  } catch (error) {
+    resultDiv.innerHTML = "Error processing images.";
+    console.error(error);
+  }
+
+  // Hide loading animation
+  loading.style.display = "none";
+}
+
+    // Function to add files without clearing previously added ones
+    function handleFiles(files) {
+      if (!files || files.length === 0) return;
+      // Add each new file to the filesArray
+      for (let i = 0; i < files.length; i++) {
+        filesArray.push(files[i]);
+      }
+      previewImages();
+      // Show submit button if there are any files
+      if (filesArray.length > 0) {
+        submitBtn.classList.remove("hidden");
+      }
+      // Clear the file input value so that selecting the same file again triggers an event
+      fileInput.value = "";
+    }
+
+    // Display previews for all selected images
+    function previewImages() {
+      // Clear the preview container
+      previewContainer.innerHTML = "";
+      filesArray.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          // Create a container for each preview item
+          const previewItem = document.createElement("div");
+          previewItem.className = "preview-item";
+
+          // Create and set up the image element
+          const img = document.createElement("img");
+          img.src = e.target.result;
+          img.alt = "Image Preview";
+          img.className = "preview-img";
+          // Optionally, allow removal of an image preview by clicking on it
+          img.addEventListener("click", () => {
+            filesArray.splice(index, 1);
+            previewImages();
+            if (filesArray.length === 0) {
+              submitBtn.classList.add("hidden");
+            }
+          });
+
+          // Create a caption element for the file name
+          const caption = document.createElement("div");
+          caption.textContent = file.name;
+          caption.className = "image-name";
+
+          // Append image and caption to the preview item
+          previewItem.appendChild(img);
+          previewItem.appendChild(caption);
+          // Append the preview item to the container
+          previewContainer.appendChild(previewItem);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Submit the images to the backend
+    submitBtn.addEventListener("click", async function () {
+      if (filesArray.length === 0) return;
+
+      // Prepare form data; appending each file with the same key so backend can handle multiple files
+      const formData = new FormData();
+      filesArray.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      // Show loading animation and hide the submit button
+      loading.style.display = "block";
+      resultDiv.innerHTML = "";
+      submitBtn.classList.add("hidden");
+
+      // Send to backend for classification
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          body: formData
+        });
+        const result = await response.json();
+        // Expecting the backend to return an array of results (one for each image)
+        let output = "";
+        if (Array.isArray(result)) {
+          result.forEach((r, idx) => {
+            output += `Image ${idx + 1}: Prediction: <strong>${r.class}</strong> <br /> Confidence: <strong>${r.confidence}%</strong><br /><br />`;
+          });
+        } else {
+          // Fallback for a single result object
+          output = `Prediction: <strong>${result.class}</strong> <br /> Confidence: <strong>${result.confidence}%</strong>`;
+        }
+        resultDiv.innerHTML = output;
+      } catch (error) {
+        resultDiv.innerHTML = "Error processing images.";
+      }
+      loading.style.display = "none";
+    });
+
+    // Function called when the "Add More Images" button is clicked.
+    // It simply triggers the file input to allow adding new files.
+    function addMoreImages() {
+       fileInput.value = "";
+      fileInput.click();
+    }
+  </script>
+
+  <!-- Bootstrap 5 JavaScript Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
